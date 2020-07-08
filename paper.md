@@ -33,7 +33,7 @@ affiliations:
 date: 8 July 2020
 bibliography: paper.bib
 
-aas-doi: 10.3847/xxxxx <- update this with the DOI from AAS once you know it.
+##aas-doi: 10.3847/xxxxx <- update this with the DOI from AAS once you know it.
 aas-journal: Astrophysical Journal
 ---
 
