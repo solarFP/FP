@@ -131,7 +131,7 @@ def writeparam(fle,outfile,nE,nmu,atmfile,inc_relativity,inc_cc, inc_synchro, in
 def solver(nE = 100, nmu=60, atmfile='atm.dat', inc_relativity = True, inc_cc = True, inc_synchro=True, inc_magmirror = False, inc_rc = True,
            oneD = False, reflecttop = False, reflectbottom = False, maxiter=100, tolres=1e-3, toldiff = 1e-4, implicit_theta = 1.0, mbeam = 0e0, Zbeam=-1.0,
            Ecut=20.0, dlt=5.0, Eflux=1e11, patype=2, pasigma=.05, resist_fact=1e0, Emin = 1e0, Emax = 0, restart= False, writeout = True, outfile = '',
-           nthreads = 0):
+           nthreads = 0, mpiexec = 'mpiexec'):
    import inspect
    import os
    import numpy as np
@@ -177,16 +177,25 @@ def solver(nE = 100, nmu=60, atmfile='atm.dat', inc_relativity = True, inc_cc = 
    else:
      dorestart = False
 
+   import readatm
+   atm = readatm.readatm(fle = atmfile)
+   if (atm == None): return
+
    writeparam(paramfile,outfile,nE,nmu,atmfile,inc_relativity,inc_cc, inc_synchro, inc_magmirror, inc_rc, oneD, reflecttop, reflectbottom, maxiter, tolres, toldiff,
               implicit_theta, mbeam, Zbeam, Ecut, dlt, Eflux, patype, pasigma, resist_fact, Emin, Emax, dorestart)
 
-   import readatm
-   atm = readatm.readatm(fle = atmfile)
    nz = atm['zin'].size
    nthreads = min(nthreads, int(nz/5))
 
    thisdir = os.path.dirname(inspect.getfile(writeparam))
-   out = subprocess.run(['mpiexec','-n',str(nthreads),thisdir+'/fp',paramfile],stderr=subprocess.STDOUT)
+   mpiexec = str(mpiexec)
+   try:
+     out = subprocess.run([mpiexec,'-n',str(nthreads),thisdir+'/fp',paramfile],stderr=subprocess.STDOUT)
+   except OSError as err:
+     print("OS error: {0}".format(err))
+     if (os.path.exists(paramfile)): os.remove(paramfile)
+     if (os.path.exists(outfile) and not keepout): os.remove(outfile)
+     return None
    fpout = fpoutClass()
    readout(outfile,atmfile,fpout)
    os.remove(paramfile)

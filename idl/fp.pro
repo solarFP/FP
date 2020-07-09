@@ -40,10 +40,11 @@ PRO fp, nEn = nEn, nmu = nmu, atmfile = atmfile, inc_cc = inc_cc, inc_synchro = 
         oneD = oneD, reflecttop = reflecttop, reflectbottom = reflectbottom, maxiter = maxiter, tolres = tolres, toldiff = toldiff, $ 
         implicit_theta = implicit_theta, mbeam = mbeam, zbeam = zbeam, Ecut = Ecut, dlt = dlt, eflux = eflux, patype = patype, $ 
         pasigma = pasigma, resist_fact = resist_fact, restart = restart, writeout = writeout, Emin = Emin, Emax = Emax, $
-        nthreads = nthreads, inc_relativity = inc_relativity, outfile = outfile, fpout
+        nthreads = nthreads, inc_relativity = inc_relativity, outfile = outfile, mpiexec = mpiexec, fpout
 ; IDL routine to call fortran Fokker-Planck solver
 
 @const
+on_error,2
 if (n_elements(restart) eq 0) then restart = 0L else restart = long(restart[0])
 if (restart) then begin
   if ( (size(fpout,/type) ne 8) ) then begin
@@ -80,6 +81,7 @@ if (dorestart) then resv = fpout.inputparams.Emin & setfpparam,Emin,1d0,resv,dor
 if (dorestart) then resv = fpout.inputparams.Emax & setfpparam,Emax,3d3*Ecut,resv,dorestart
 if (n_elements(writeout) eq 0) then writeout = 1L else writeout = long(writeout[0])
 if (n_elements(nthreads) eq 0) then nthreads = long(!cpu.tpool_nthreads) else nthreads = long(nthreads)
+if (n_elements(mpiexec) eq 0) then mpiexec = 'mpiexec' else mpiexec = string(mpiexec)
 
 id = long(randomu(seed)*1d6) ; pick some random label to keep track of which param.cnt and out.dat go together
 paramfile = 'param.'+strng(id)+'.cnt'
@@ -103,8 +105,13 @@ nthreads = nthreads  < nz/5L
 
 dir = routine_filepath('fp')
 dir = strmid(dir,0,strpos(dir,'fp.pro')-1)
-cmd = "mpiexec -n "+strng(nthreads) + " "+dir+"/fp "+paramfile
-spawn,cmd
+cmd = mpiexec + " -n "+strng(nthreads) + " "+dir+"/fp "+paramfile
+spawn,cmd, exit_status=exit_status
+if (exit_status ne 0) then begin
+  if (file_test(paramfile)) then file_delete,paramfile
+  if (~keepout and file_test(outfile)) then file_delete,outfile
+  return
+endif
 readfpout,fpout,atmfile,file = outfile
 file_delete,paramfile 
 if (~keepout) then file_delete,outfile

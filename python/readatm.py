@@ -1,10 +1,14 @@
 def readatm(fle='atm.dat'):
    from scipy.io import FortranFile
    import numpy as np
-   fl = FortranFile(fle, 'r')
-   sz = fl.read_ints(np.int32)
-   ar = fl.read_reals()
-   fl.close()
+   try:
+     fl = FortranFile(fle, 'r')
+     sz = fl.read_ints(np.int32)
+     ar = fl.read_reals()
+     fl.close()
+   except OSError as err:
+     print("OS error: {0}".format(err))
+     return None
    nz = sz[0]
    nions = sz[1]
    nneutrals = sz[2]

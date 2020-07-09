@@ -19,6 +19,7 @@ END
 
 FUNCTION readhdf5,file
 ;forward_function parsehdf5str
+on_error,2
 r = h5_parse(file,/read)
 rstr = parsehdf5str(r)
 
