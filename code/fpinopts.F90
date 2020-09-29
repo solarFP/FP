@@ -5,9 +5,7 @@ MODULE fpinopts
     integer nE, nmu, nz, nion, nneutral, maxiter, patype
     double precision Emin, Emax, tolres, toldiff, implicit_theta, mbeam, zbeam, Ecut, dlt, eflux, pasigma, resist_fact
     double precision, allocatable::  zin(:), tg(:), bfield(:), dni(:,:), dnn(:, :), mion(:), Zion(:), Zn(:), Enion(:)
-    logical inc_relativity, inc_CC, inc_synchro, inc_magmirror, inc_RC, oneD, reflecttop, reflectbottom, &
-         writeoutput
-    character(len=256) outfile
+    logical inc_relativity, inc_CC, inc_synchro, inc_magmirror, inc_RC, oneD, reflecttop, reflectbottom
   ENDTYPE
 ! fpoutputtype encapsulates the output produced by FP and communicated to the calling procedure
   TYPE fpoutputtype

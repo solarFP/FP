@@ -3,45 +3,24 @@ MODULE writer
 ! Module Variables:
 !  file_id:	The HDF5 file id
 
-  use grid
-  use beam
   use hdf5readwrite
   implicit none
   integer(HID_T), private :: file_id       ! File identifier
 
   contains 
-  SUBROUTINE init_write(fpin, fpout)
+  SUBROUTINE init_write(outfile,fpin, fpout)
     use fpinopts
     use parmpi
     implicit none
-    double precision, allocatable :: esvol(:,:)
     TYPE(fpinputtype) fpin
     TYPE(fpoutputtype) fpout
     integer i,j, error
     integer(HID_T) :: group_id
+    character(len=256) outfile
 
-    fpout%nE = nE_all; fpout%nmu = nmu_all; fpout%nz = nz_all
-    if (myid.eq.0) then 
-      allocate(fpout%E(nE_all+1), fpout%mu(nmu_all+1),fpout%z(nz_all+1))
-    else
-      allocate(fpout%E(1),fpout%mu(1),fpout%z(1))
-    endif
-    allocate(Esvol(1:nE,1:nmu))
-    forall (j = 1:nmu, i = 1:nE)
-      esvol(i,j) = (E(i+1)-E(i))*mbeam/1d3 * (mu(j)-mu(j+1))*2*pi ! dE * 2*pi*dmu (keV sr)
-    endforall
-    if (myplaneid(3).eq.0) then
-      allocate(fpout%esvol(nE_all,nmu_all))
-    else 
-      allocate(fpout%esvol(1,1))
-    endif
-    call par_GetGridAll(fpout%E,fpout%mu,fpout%z) 
-    call par_CollectMS(esvol,fpout%esvol)
-
-    if (myid.eq.0) then
-      fpout%E = fpout%E * mbeam / 1d3 ! convert E to keV
+    !if (myid.eq.0) then
       call h5open_f(error)
-      call h5fcreate_f(fpin%outfile, H5F_ACC_TRUNC_F, file_id, error)
+      call h5fcreate_f(outfile, H5F_ACC_TRUNC_F, file_id, error)
       call h5gcreate_f(file_id, 'inputparams', group_id, error)
       call writesattr(fpin%nE,'nE',group_id)
       call writesattr(fpin%nmu,'nmu',group_id)
@@ -56,7 +35,6 @@ MODULE writer
       call writesattr(fpin%oneD,'oneD',group_id)
       call writesattr(fpin%reflecttop,'reflecttop',group_id)
       call writesattr(fpin%reflectbottom,'reflectbottom',group_id)
-      call writesattr(fpin%writeoutput,'writeoutput',group_id)
       call writesattr(fpin%Emin,'Emin',group_id)
       call writesattr(fpin%Emax,'Emax',group_id)
       call writesattr(fpin%tolres,'tolres',group_id)
@@ -91,38 +69,18 @@ MODULE writer
       call writearray(fpout%z,'z',group_id)
       call writearray(fpout%esvol,'esvol',group_id)
       call h5gclose_f(group_id, error)
-    endif
+    !endif
   ENDSUBROUTINE
 
   SUBROUTINE writeout(fpout)
-    use parmpi
-    use matrix
     use fpinopts
     use hdf5readwrite
     implicit none
-    double precision, allocatable :: fe(:,:,:)
-    double precision qh(nz), momrate(nz)
-    integer ierr, i,j,k
+    integer ierr
     integer(HID_T) group_id
     TYPE(fpoutputtype) fpout
 
-    allocate(fpout%heatrate(nz_all), fpout%momrate(nz_all))
-    call CalcHeatRate(qh,momrate)
-    call par_Gather1D(qh,fpout%heatrate,nz,3)
-    call par_Gather1D(momrate,fpout%momrate,nz,3)
-
-    if (myid.eq.0) then
-      if (.not.allocated(fpout%f)) allocate(fpout%f(nE_all,nmu_all,nz_all))
-    else 
-      if (.not.allocated(fpout%f)) allocate(fpout%f(1,1,1))
-    endif
-    !convert from fp to fE. fE = fp * msvol / esvol
-    allocate(fe(nE,nmu,nz))
-    forall (k = 1:nz, j = 1:nmu, i = 1:nE)
-      fe(i,j,k) = f(i,j,k)*msvol(i,j)/(E(i+1)-E(i))/(mbeam/1d3)/(mu(j)-mu(j+1))/2/pi ! #particles/cm^3 /keV /sr
-    endforall
-    call par_collectall(fe,fpout%f)
-    if (myid.eq.0) then
+    !if (myid.eq.0) then
       call h5gopen_f(file_id,'/',group_id,ierr)
       call writearray(fpout%heatrate,'heatrate',group_id)
       call writearray(fpout%momrate,'momrate',group_id)
@@ -130,14 +88,13 @@ MODULE writer
       call h5gclose_f(group_id,ierr)
       call h5fclose_f(file_id, ierr)
       call h5close_f(ierr)
-    endif
-    deallocate(fe)
-    call mpi_barrier(cart_comm,ierr)
+    !endif
+    !call mpi_barrier(cart_comm,ierr)
   ENDSUBROUTINE
 
-  SUBROUTINE readout(infile, fpin, fpout)
+  SUBROUTINE readout(infile, fpin, fpout,myid)
     use fpinopts
-    use mpi
+    !use mpi
     use hdf5readwrite
     implicit none
     TYPE(fpinputtype) fpin
@@ -147,13 +104,12 @@ MODULE writer
     integer(HID_T) :: group_id
     character(len = 256) infile
  
-    call MPI_Comm_rank(MPI_COMM_WORLD,myid,ierr)
+!    call MPI_Comm_rank(MPI_COMM_WORLD,myid,ierr)
     !Either have every processor read the file or have one do it and Bcast to the rest.
     !right now it seems easiest to have every processor do it
 !    if (myid.eq.0) then 
-      fpin%outfile = infile
       call h5open_f(ierr)
-      call h5fopen_f(fpin%outfile, H5F_ACC_RDONLY_F, file_id, ierr)
+      call h5fopen_f(infile, H5F_ACC_RDONLY_F, file_id, ierr)
       call h5gopen_f(file_id, 'inputparams', group_id, ierr)
       call readsattr(fpin%nE,'nE',group_id)
       call readsattr(fpin%nmu,'nmu',group_id)
@@ -168,7 +124,6 @@ MODULE writer
       call readsattr(fpin%oneD,'oneD',group_id)
       call readsattr(fpin%reflecttop,'reflecttop',group_id)
       call readsattr(fpin%reflectbottom,'reflectbottom',group_id)
-      call readsattr(fpin%writeoutput,'writeoutput',group_id)
       call readsattr(fpin%Emin,'Emin',group_id)
       call readsattr(fpin%Emax,'Emax',group_id)
       call readsattr(fpin%tolres,'tolres',group_id)
@@ -214,10 +169,4 @@ MODULE writer
     call h5close_f(ierr)
   ENDSUBROUTINE
 
-  SUBROUTINE closeout()
-    use parmpi
-    implicit none
-    integer ierr
-    call mpi_barrier(cart_comm,ierr)
-  ENDSUBROUTINE
 ENDMODULE

@@ -28,7 +28,7 @@ import fp
 # Call FP with all terms switched OFF except Coulomb Collisions
 fpout = fp.solver(dlt = dlt, Ecut = Ecut, Eflux=Eflux, inc_rc = False, reflecttop= True, inc_magmirror = False, inc_synchro = False, atmfile = atmfile, patype = 2,pasigma = .1, maxiter = 400, implicit_theta = .95e0, nE=100,nmu = 60, toldiff = 1e-3, tolres = 1e-3)
 # Call FP with all terms switched ON
-fpout_all = fp.solver(dlt = dlt, Ecut = Ecut, Eflux=Eflux, inc_rc = True, reflecttop= True, inc_magmirror = True, inc_synchro = True, atmfile = atmfile_all, patype = 2, pasigma = .1, maxiter = 400, implicit_theta = .9e0, nE=100,nmu = 60, toldiff = 1e-3, tolres = 1e-3)
+fpout_all = fp.solver(dlt = dlt, Ecut = Ecut, Eflux=Eflux, inc_rc = True, reflecttop= True, inc_magmirror = True, inc_synchro = True, atmfile = atmfile_all, patype = 2, pasigma = .1, maxiter = 500, implicit_theta = .9e0, nE=100,nmu = 60, toldiff = 1e-3, tolres = 1e-3)
 
 #The following can be used to store (and restore) the solutions to disk
 #import shelve; sf = shelve.open('fpout.e78.db'); sf['fpout'] = fpout; sf['fpout_all'] = fpout_all; sf.close()

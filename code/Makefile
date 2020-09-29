@@ -21,14 +21,19 @@ FOPTS = -O3 -march=native -ffree-line-length-none -mcmodel=medium -I ${HDF5_INCL
 #FOPTS = -Wall -g -fcheck=all -ffree-line-length-none -ffpe-trap=invalid,zero,overflow  -fbacktrace -I ${HDF5_INCLUDE_PATH}
 LOPTS = -L ${HDF5_LIB_PATH} -lhdf5_fortran
 
-objects = const.o helpers.o options.o derivs.o grid.o parmpi.o loop.o beam.o matrix.o pentdag.o fpinopts.o hdf5readwrite.o writer.o fp.o fpsa.o
+objects = const.o bessk.o helpers.o options.o derivs.o grid.o parmpi.o loop.o beam.o matrix.o pentdag.o fpinopts.o fp.o 
 
-fp : $(objects)
-	${F} ${LOPTS} -o fp $(objects)
+standalone = hdf5readwrite.o writer.o fpsa.o
+
+fp : libfp.a $(standalone)
+	${F} ${LOPTS} -o fp $(standalone) libfp.a
+
+libfp.a : $(objects)
+	ar cr libfp.a $(objects)
 
 .F.o .f.o .F90.o :
 	${F} ${FOPTS} -c -o $@ $<
 
 .phony : clean
 clean :
-	rm fp $(objects) *.mod
+	rm fp $(objects) $(standalone) *.mod

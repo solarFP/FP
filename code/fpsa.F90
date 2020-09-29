@@ -9,6 +9,7 @@ PROGRAM FPSA
 !   6. Deallocate variables and closes MPI 
   use mpi
   use fp
+  use writer
   implicit none
   integer nE, nmu, maxiter, patype, ierr, myid
   double precision Emin, Emax, tolres, toldiff, implicit_theta, mbeam, zbeam, Ecut, dlt, eflux, pasigma, resist_fact
@@ -16,6 +17,8 @@ PROGRAM FPSA
   logical inc_CC, inc_synchro, inc_magmirror, inc_RC, oneD, reflecttop, reflectbottom, &
      writeoutput, inc_relativity, restart
   character(len=256) outfile, paramfile, atmfile
+  TYPE(fpinputtype) fpinput
+  TYPE(fpoutputtype) fpoutput
   
   namelist /control/ nE, nmu, Emin, Emax, inc_relativity, inc_CC, inc_synchro,inc_magmirror, inc_RC, oneD, &
                      reflecttop, reflectbottom, maxiter, writeoutput,tolres, toldiff, implicit_theta, atmfile, outfile, mbeam, &
@@ -38,14 +41,21 @@ PROGRAM FPSA
     fpinput%inc_relativity = inc_relativity; fpinput%inc_CC = inc_CC 
     fpinput%inc_synchro = inc_synchro; fpinput%inc_magmirror = inc_magmirror; fpinput%inc_RC = inc_RC
     fpinput%oneD = oneD; fpinput%reflecttop = reflecttop; fpinput%reflectbottom = reflectbottom; fpinput%maxiter = maxiter
-    fpinput%writeoutput = writeoutput; fpinput%tolres = tolres; fpinput%toldiff = toldiff; fpinput%implicit_theta = implicit_theta
-    fpinput%outfile = outfile; fpinput%Ecut = Ecut; fpinput%dlt = dlt; fpinput%eflux = eflux; fpinput%patype = patype
+    fpinput%tolres = tolres; fpinput%toldiff = toldiff; fpinput%implicit_theta = implicit_theta
+    fpinput%Ecut = Ecut; fpinput%dlt = dlt; fpinput%eflux = eflux; fpinput%patype = patype
     fpinput%pasigma = pasigma; fpinput%resist_fact = resist_fact
-    call FP_Solve()
   else
-    call FP_RestartFromFile(outfile, maxiter, tolres, toldiff, implicit_theta)
+    call readout(outfile, fpinput,fpoutput,myid)
+    !replace a few input parameters with those chosen here
+    fpinput%maxiter = maxiter; fpinput%tolres = tolres; fpinput%toldiff = toldiff; fpinput%implicit_theta = implicit_theta
+  endif
+  call FP_Solve(fpinput,fpoutput,restart)
+  if (writeoutput.and.myid.eq.0) then
+    call init_write(outfile,fpinput,fpoutput) 
+    call writeout(fpoutput)
   endif
   deallocate(fpinput%zin,fpinput%tg,fpinput%bfield,fpinput%dni,fpinput%dnn,fpinput%mion,fpinput%Zion, fpinput%Zn, fpinput%Enion)
+  deallocate(fpoutput%esvol,fpoutput%heatrate,fpoutput%momrate,fpoutput%E,fpoutput%mu,fpoutput%z,fpoutput%f)
   call MPI_Finalize(ierr)
 
 contains

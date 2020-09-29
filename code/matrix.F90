@@ -89,33 +89,48 @@ Module matrix
     use beam
     use options
     implicit none
-    double precision mr, xb, xip, xi, cl, kab, clp, kan, kpan, dlnBdz, S, eta,tmp,tmp2
+    double precision mr, Thetab, xb, xip, xi1, xi0, cl, kab, clp, kan, kpan, dlnBdz, S, eta,tmp,tmp2
     integer i,j,k,l
+    logical doRelColl
     Ap2 = 0; Ap=0; Amu2=0; Amu=0; Az=0; Af=0; flxpC = 0; flxtC = 0
     Bp = 0; Bmu = 0; Bf = 0
+    doRelColl = inc_relativity ! Do relativistic or non-relativistic Coulomb collisions?
+    !doRelColl = .false. 
     do k = 1, nz; do i = 1, nE
       do l = 1, Nion
         mr = mbeam / mion(l)
-        xb = Em(i)*mion(l) / (kb*tg(k))
-        xip = sqrtpi2*exp(-xb)*sqrt(xb)
-        xi = erf(sqrt(xb)) - xip
+        Thetab = (kb*tg(k)) / mion(l)
+        call Calcxi(pm(i),Thetab, xb, xi0,xi1,xip,doRelColl)
         cl = CoulogCC(mbeam,Zbeam, mion(l), Zion(l), dni(l,k), xb, btam(i))
         kab = pi4e4*(Zion(l)**Zbeam)**2*cl*mbeam
 
 !        if (inc_CC_el) then
         if (inc_CC.or.tg(k).lt.2d4) then
-          tmp2 = -dni(l,k)*kab*xi/2/xb/pm(i)/mbeam/clight 
+          if (doRelColl) then
+            tmp2 = -dni(l,k)*kab*xi1/2/xb/pm(i)/mbeam/clight * gmam(i)
+          else
+            tmp2 = -dni(l,k)*kab*xi1/2/xb/pm(i)/mbeam/clight
+          endif
           tmp = dni(l,k)*kab/pm(i)**2/mbeam**2
           Ap2(i,k) = Ap2(i,k) + tmp2
           do j = 1, nmu
-            Ap(i,j,k) = Ap(i,j,k) + tmp*(xi/2/xb - xip - mr*xi)
-            Af(i,j,k) = Af(i,j,k) - mr*dni(l,k)*kab*clight/pm(i)**3/mbeam**3*xip*2*xb 
+            if (doRelColl) then
+              Ap(i,j,k) = Ap(i,j,k) + tmp*(gmam(i)*xi1/2/xb - xip*Thetab - xi1*Thetab/gmam(i) - mr*xi1)
+              Af(i,j,k) = Af(i,j,k) - dni(l,k)*kab*clight*xip/mbeam**2/mion(l)/gmam(i)/pm(i)
+            else
+              Ap(i,j,k) = Ap(i,j,k) + tmp*(xi1/2/xb - xip -mr*xi1)
+              Af(i,j,k) = Af(i,j,k) - mr*dni(l,k)*kab*clight/pm(i)**3/mbeam**3*xip*2*xb
+            endif
             flxpC(:,i,j,k) = flxpC(:,i,j,k) + tmp2*dpc(:,i)
-            flxpC(0,i,j,k) = flxpC(0,i,j,k) - tmp*xi*mr
+            flxpC(0,i,j,k) = flxpC(0,i,j,k) - tmp*xi1*mr
           enddo
         endif
         if (inc_cc.and..not.oneD) then 
-          tmp = -dni(l,k)*kab*clight/2/pm(i)**3/mbeam**3*(xi + xip - xi/2/xb)
+          if (doRelColl) then
+            tmp = -dni(l,k)*kab*clight/2/pm(i)**3/mbeam**3/gmam(i)*(xi0 + gmam(i)*Thetab*xip - xi1/2/xb)
+          else
+            tmp = -dni(l,k)*kab*clight/2/pm(i)**3/mbeam**3*(xi1 + xip - xi1/2/xb)
+          endif
           Amu2(i,:,k) = Amu2(i,:,k) + tmp*sintm(1:nmu)**2
           Amu(i,:,k) = Amu(i,:,k) -tmp*2*mum(1:nmu)
           do j =1,nmu
@@ -135,12 +150,20 @@ Module matrix
         kpan = pi4e4*(Zbeam*Zn(l))**2*clp*mbeam
 !        if (inc_CC_el) then 
         if (inc_CC.or.tg(k).lt.2d4) then
-          tmp = - mr*dnn(l,k)*kan/pm(i)**2/mbeam**2
+          if (doRelColl) then
+            tmp = - mr*dnn(l,k)*kan/pm(i)**2/mbeam**2*gmam(i)**2
+          else
+            tmp = - mr*dnn(l,k)*kan/pm(i)**2/mbeam**2
+          endif
           Ap(i,:,k) = Ap(i,:,k) + tmp
           flxpC(0,i,:,k) = flxpC(0,i,:,k) + tmp
         endif
         if (inc_CC.and..not.oneD) then 
-          tmp = -dnn(l,k)*kpan*clight/2/pm(i)**3/mbeam**3
+          if (doRelColl) then
+            tmp = -dnn(l,k)*kpan*clight/2/pm(i)**3/mbeam**3/gmam(i)
+          else
+            tmp = -dnn(l,k)*kpan*clight/2/pm(i)**3/mbeam**3
+          endif
           Amu2(i,:,k) = Amu2(i,:,k) + tmp * sintm(1:nmu)**2
           Amu(i,:,k) = Amu(i,:,k) - tmp*(2*mum(1:nmu))
           do j =1, nmu
@@ -459,6 +482,43 @@ Module matrix
     return
   ENDFUNCTION
   
+  SUBROUTINE Calcxi(p, Thetab, xb, xi0,xi1,xip, inc_rel)
+    implicit none
+    integer,parameter :: nn = 1000
+    double precision p,xi0,xi1,xip, Thetab, bsk, xb,u, gma, gmap(nn),up(nn),integ(nn-1), L0,L1
+    double precision, external :: bessk
+    logical inc_rel
+    integer ii
+
+    xb = .5*p**2/Thetab
+    if (.not.inc_rel) then ! Classical implementation from Trubnikov 1965
+      xip = sqrtpi2*exp(-xb)*sqrt(xb)
+      xi1 = erf(sqrt(xb)) - xip
+      xi0 = xi1
+    else !Relativistic implementation from Pike & Rose 2014 (PHYSICAL REVIEW E 89, 053107 (2014))
+      bsk = bessk(2,1d0/Thetab)
+      u = p * clight
+      gma = sqrt(p**2+1)
+      do ii = 1, nn
+        up(ii) = (ii - 1d0)/(nn-1d0)*u
+      enddo
+      gmap = sqrt((up/clight)**2+1)
+      integ = exp(-.5*(gmap(1:nn-1)+gmap(2:nn))/Thetab) * (up(2:nn) - up(1:nn-1))
+      L1 = sum(integ)
+      integ = integ / (.5*(gmap(1:nn-1)+gmap(2:nn)))
+      L0 = sum(integ)
+      if (bsk.gt.0) then
+        xi1 = (gma**2*L1 - Thetab*L0 + (Thetab-gma)*u*exp(-gma/Thetab)) / (bsk*clight)
+        xi0 = (gma**2*L0 - Thetab*L1 + (Thetab-gma)*u*exp(-gma/Thetab)) / (bsk*clight)
+        xip = (2*gma*L1 + (1/Thetab+2*Thetab)*u*exp(-gma/Thetab)) / (bsk*clight)
+      else
+        xi1 = gma**2*(erf(sqrt(xb)) - sqrtpi2*exp(-xb)*sqrt(xb))
+        xip = 2*gma*(erf(sqrt(xb)) - sqrtpi2*exp(-xb)*sqrt(xb)) + gma**3/Thetab*sqrtpi2*exp(-xb)*sqrt(xb)
+        xi0 = xi1
+      endif
+    endif
+  ENDSUBROUTINE
+
   FUNCTION CoulogEN(b,g,E,EnI)
     implicit none
     double precision b,g, Eni, CoulogEN, E

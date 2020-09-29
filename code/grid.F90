@@ -42,7 +42,7 @@ module grid
 !  dz2:		2nd derivative, d^2/dz^2, centered stencil (k-1,k,k+1)
 !
 !  msvol:	momemtum space differential volume element, d3p. (units mbeam eV / clight)
-!
+!  esvol:   energy space differential volume element, dE dOmega (units keV sr)
   use const
   implicit none
 
@@ -54,7 +54,7 @@ module grid
                                   dpm(:,:), dpp(:,:), dp2(:,:), dpc(:,:)  !Energy related variables
   double precision, allocatable:: theta(:), mu(:), thetam(:), mum(:), sint(:), sintm(:), dmum(:,:), dmup(:,:) 
   double precision, allocatable:: dmu2(:,:), dmuc(:,:), dtc(:,:) ! pitch-angle related variables
-  double precision, allocatable:: z(:), zm(:), dzm(:,:), dzp(:,:), dz2(:,:), dzc(:,:), msvol(:,:)
+  double precision, allocatable:: z(:), zm(:), dzm(:,:), dzp(:,:), dz2(:,:), dzc(:,:), msvol(:,:), esvol(:,:)
   
   contains 
     subroutine allocate_grid(oneD)
@@ -74,7 +74,7 @@ module grid
       allocate(sint(-1:nmu+3), sintm(-1:nmu+2)); ! sin(theta) 
       allocate(dmum(-2:2,nmu), dmup(-2:2,nmu), dmu2(-2:2,nmu), dtc(-1:1,nmu),dmuc(-1:1,nmu))! 3-point 1st and 2nd derivative stencils
       allocate(z(-1:nz+3), zm(-1:nz+2), dzm(-2:0,nz), dzp(0:2,nz), dz2(-1:1,nz),dzc(-1:1,nz))
-      allocate(msvol(nE,nmu))
+      allocate(msvol(nE,nmu), esvol(nE,nmu))
     end subroutine 
 
     subroutine deallocate_grid()
@@ -104,18 +104,20 @@ module grid
       Emn = Emin / mbeam
       Epv = Epiv / mbeam
 
-      gs=.5d0
+      gs=.75d0
       ! E grid in units of /mc^2
       nEbp = nE_all / 2 ! # of grid cells below Epiv
       
       ib = -1
       do i = ib, nE+3
-!        E(i) = (real(i-1 + fulloffset(1))/real(nE_all+1) * (Emx**gs - Emn**gs) + Emn**gs)**(1d0/gs)
-        E(i) = exp(real(i-1 + fulloffset(1))/real(nE_all+1) * (log(Emx) - log(Emn)) + log(Emn))
+!        E(i) = (real(i-1 + fulloffset(1))/real(nE_all) * (Emx**gs - Emn**gs) + Emn**gs)**(1d0/gs)
+        E(i) = exp(real(i-1 + fulloffset(1))/real(nE_all) * (log(Emx) - log(Emn)) + log(Emn))
 !        if (i+fulloffset(1).lt.nEbp) then
-!          E(i) = (real(i-1 + fulloffset(1))/real(nEbp+1) * (Epv**gs - Emn**gs) + Emn**gs)**(1d0/gs) !power-law (gs) below Epiv
+!          E(i) = (real(i-1 + fulloffset(1))/real(nEbp) * (Epv**gs - Emn**gs) + Emn**gs)**(1d0/gs) !power-law (gs) below Epiv
+!!          E(i) =  exp(real(i-1 + fulloffset(1))/real(nEbp) * (log(Epv) - log(Emn)) + log(Emn))
 !        else
-!          E(i) = exp(real(i-1-nEbp + fulloffset(1))/real(nE_all-nEbp+1) * (log(Emx) - log(Epv)) + log(Epv)) !log spaced above Epiv
+!          E(i) = exp(real(i-nEbp + fulloffset(1))/real(nE_all-nEbp+1) * (log(Emx) - log(Epv)) + log(Epv)) !log spaced above Epiv
+!!          E(i) = (real(i-nEbp + fulloffset(1))/real(nE_all-nEbp+1) * (Emx**gs - Epv**gs) + Epv**gs)**(1d0/gs)
 !        endif
       enddo
       Em = .5*(E(-1:nE+2) + E(0:nE+3))
@@ -216,6 +218,7 @@ module grid
       enddo
       do j = 1, nmu; do i = 1, nE
         msvol(i,j) = (mbeam / clight)**3 * (p(i+1)**3 - p(i)**3)/3.*(mu(j)-mu(j+1)) *2*pi
+        esvol(i,j) =  (E(i+1)-E(i))*(mbeam/1d3)*(mu(j)-mu(j+1))*2*pi
       enddo; enddo
     end subroutine
 end module

@@ -21,7 +21,7 @@ atmfile_all = 'atm.13Mm.3MK.dat'
 ; Call FP with all terms switched OFF except Coulomb Collisions
 fp,fpout,dlt = dlt, ecut = ecut, eflux=eflux, inc_rc = 0, reflecttop= 1, inc_magmirror = 0, inc_sync = 0, atmfile = atmfile, patype = 2,pasigma = .1,maxit = 400, impl = .95d0, nen=100,nmu = 60, toldiff = 1d-3, tolres = 1d-3
 ; Call FP with all terms switched ON
-fp,fpout_all,dlt = dlt, ecut = ecut, eflux=eflux, inc_rc = 1, reflecttop= 1, inc_magmirror = 1, inc_sync = 1, atmfile = atmfile_all, patype = 2,pasigma = .1,maxit = 400, impl = .9d0, nen=100,nmu = 60, toldiff = 1d-3, tolres = 1d-3
+fp,fpout_all,dlt = dlt, ecut = ecut, eflux=eflux, inc_rc = 1, reflecttop= 1, inc_magmirror = 1, inc_sync = 1, atmfile = atmfile_all, patype = 2,pasigma = .1,maxit = 500, impl = .9d0, nen=100,nmu = 60, toldiff = 1d-3, tolres = 1d-3
 ;save,file = 'fpout.sav',fpout, fpout_all
 ;restore,'fpout.sav'
 
