@@ -5,8 +5,6 @@ Module matrix
 ! the nonlinear component prop to nflux 
 ! So matrix = A + B * nflux
 ! Module Variables:
-! A:		The linear compoments of the matrix equation
-! B:		The nonlinear components prop to nflux of the matrix equation
 ! rhs:		The right-hand side of the matrix equation
 ! res:		The residual of the current solution (Eq 23 of Allred et al 2020)
 ! Ap2:		The component of A prop to d^2 /dp^2
@@ -22,76 +20,30 @@ Module matrix
   use grid
   implicit none
   
-  double precision, allocatable :: A(:,:,:,:), rhs(:,:,:), res(:,:,:), B(:,:,:,:), flxpC(:,:,:,:), flxtC(:,:,:,:)
+  double precision, allocatable :: res(:,:,:), flxpC(:,:,:,:), flxtC(:,:,:,:)
   double precision,allocatable :: Ap2(:,:), Ap(:,:,:), Amu2(:,:,:), Amu(:,:,:), Az(:,:), Af(:,:,:), Bmu(:,:,:), Bp(:,:,:), Bf(:,:,:)
   contains
   
-  SUBROUTINE SetupMatrix()
-    !Allocate memory for the matrix coefficients and populate them
-    implicit none
-    integer i,j,k
- 
-    allocate(Ap2(nE,nz), Ap(nE,nmu,nz), Amu2(nE, nmu,nz), Amu(nE, nmu, nz), Az(nE,nmu), Af(nE,nmu, nz)) 
-    allocate(Bp(nE,nmu,nz), Bmu(nE,nmu,nz), Bf(nE,nmu,nz))
-    allocate(A(0:6,0:nE+1,0:nmu+1, 0:nz+1), rhs(0:nE+1,0:nmu+1, 0:nz+1), res(nE,nmu,nz))
-    allocate(B(0:4,nE,nmu,nz))
-    allocate(flxpC(-1:1,nE,nmu,nz),flxtC(-1:1,nE,nmu,nz))
-    call MatrixCoeff()
-    do k=1, nz; do j=1, nmu; do i =1,nE
-      A(0,i,j,k) = (Ap2(i,k)*dp2(0,i) + Ap(i,j,k)*dpc(0,i) + Amu2(i,j,k)*dmu2(0,j) + Amu(i,j,k)*dmuc(0,j) & 
-                   +Az(i,j)*dzc(0,k) + Af(i,j,k))
-      A(1,i,j,k) = (Ap2(i,k)*dp2(-1,i) + Ap(i,j,k)*dpc(-1,i))
-      A(2,i,j,k) = (Ap2(i,k)*dp2( 1,i) + Ap(i,j,k)*dpc( 1,i))
-      A(3,i,j,k) = (Amu2(i,j,k)*dmu2(-1,j) + Amu(i,j,k)*dmuc(-1,j))
-      A(4,i,j,k) = (Amu2(i,j,k)*dmu2( 1,j) + Amu(i,j,k)*dmuc( 1,j))
-      A(5,i,j,k) = Az(i,j)*dzc(-1,k)
-      A(6,i,j,k) = Az(i,j)*dzc( 1,k)
-
-      B(0,i,j,k) = (Bp(i,j,k) * dpc(0,i) + Bmu(i,j,k)*dmuc(0,j)) + Bf(i,j,k)
-      B(1,i,j,k) = Bp(i,j,k) * dpc(-1,i)
-      B(2,i,j,k) = Bp(i,j,k) * dpc( 1,i)
-      B(3,i,j,k) = Bmu(i,j,k) * dmuc(-1,j)
-      B(4,i,j,k) = Bmu(i,j,k) * dmuc( 1,j)
-    enddo; enddo; enddo
-    rhs = 0
-    call ImposeBC()
-  ENDSUBROUTINE
-
   SUBROUTINE deallocate_matrix()
     implicit none
-    deallocate(Ap2,Ap,Amu2,Amu,Az,Af,Bp,Bmu,Bf,A,B,rhs,res,flxpC,flxtC)
+    deallocate(Ap2,Ap,Amu2,Amu,Az,Af,Bp,Bmu,Bf,res,flxpC,flxtC)
   ENDSUBROUTINE
 
-  SUBROUTINE ImposeBC()
-    use beam
-    implicit none
-    
-    A(0,0,:,:) = 1; A(2,0,:,:) = -1; A(1,0,:,:) = 0; A(3:,0,:,:) = 0 ! df/dp = 0 at lower p boundary
-!    A(0,nE+1,:,:) = 1; A(1:,nE+1,:,:) = 0 ! at upper p boundary f = 0
-!    rhs(nE+1,:,:) = 0
-    A(0,nE+1,:,:) = 1; A(1,nE+1,:,:) = -1; A(2:,nE+1,:,:) = 0 ! df/dp = 0 at upper p boundary
-    rhs(nE+1,:,:) = 0
-
-    A(0,:,0,:) = 1; A(4,:,0,:) = -1   ! d/dmu = 0 at mu boundaries
-    rhs(:,0,:) = 0
-    A(0,:,nmu+1,:) = 1; A(3,:,nmu+1,:) = -1
-    rhs(:,nmu+1,:) = 0
-
-    A(0,:,:,0) = 1; A(1:,:,:,0) = 0; !impose injected flux at top boundary
-    rhs(1:nE,1:nmu,0) = injectedf
-    A(0,:,:,nz+1) = 1; A(1:,:,:,nz+1) = 0 ! at bottom of loop f is maxwellian
-    rhs(:,:,nz+1) = 0!MaxwellDist(:,nz+1)
-  ENDSUBROUTINE
-  
-  SUBROUTINE MatrixCoeff()
-! Calculate the coefficients (Eq 20 of Allred et al 2020)
+  SUBROUTINE SetupMatrix()
     use loop
     use beam
     use options
     implicit none
+    !Calculate the coefficients (Eq 20 of Allred et al 2020)
     double precision mr, Thetab, xb, xip, xi1, xi0, cl, kab, clp, kan, kpan, dlnBdz, S, eta,tmp,tmp2
     integer i,j,k,l
     logical doRelColl
+
+    allocate(Ap2(nE,nz), Ap(nE,nmu,nz), Amu2(nE, nmu,nz), Amu(nE, nmu, nz), Az(nE,nmu), Af(nE,nmu, nz))
+    allocate(Bp(nE,nmu,nz), Bmu(nE,nmu,nz), Bf(nE,nmu,nz))
+    allocate(res(nE,nmu,nz))
+    allocate(flxpC(-1:1,nE,nmu,nz),flxtC(-1:1,nE,nmu,nz))
+
     Ap2 = 0; Ap=0; Amu2=0; Amu=0; Az=0; Af=0; flxpC = 0; flxtC = 0
     Bp = 0; Bmu = 0; Bf = 0
     doRelColl = inc_relativity ! Do relativistic or non-relativistic Coulomb collisions?
@@ -102,7 +54,7 @@ Module matrix
         Thetab = (kb*tg(k)) / mion(l)
         call Calcxi(pm(i),Thetab, xb, xi0,xi1,xip,doRelColl)
         cl = CoulogCC(mbeam,Zbeam, mion(l), Zion(l), dni(l,k), xb, btam(i))
-        kab = pi4e4*(Zion(l)**Zbeam)**2*cl*mbeam
+        kab = pi4e4*(Zion(l)*Zbeam)**2*cl*mbeam
 
 !        if (inc_CC_el) then
         if (inc_CC.or.tg(k).lt.2d4) then
@@ -172,26 +124,31 @@ Module matrix
         endif
       enddo
     enddo; enddo
-    S = 0 ; dlnBdz = 0 !Initialize Synchro and mag mirror scales 
-    do k = 1, nz 
-      if (inc_synchro) S = 2./3.*(e2*Zbeam**2/mbeam*Bfield(k))**2 / ergperev ! ev / cm ! Include synchrotron terms?
-      if (inc_magmirror.and.(.not.oneD)) dlnBdz = sum(log(Bfield(k-1:k+1))*dzc(:,k)) ! Include Magmirror term?   
-      do j = 1, nmu; do i = 1, nE
-         tmp =  -S*btam(i)*gmam(i)**2*sintm(j)**2 
-         Ap(i,j,k) = Ap(i,j,k) + tmp
-         if (.not.oneD) then
-           Amu(i,j,k) = Amu(i,j,k) + S*clight/gmam(i)**2/mbeam*sintm(j)**2*mum(j) &
-                                   -.5/gmam(i)*btam(i)*clight*dlnbdz*sintm(j)**2
-         endif
-         Af(i,j,k) = Af(i,j,k) - 4*S*clight/gmam(i)/mbeam*(gmam(i)**2*sintm(j)+mum(j)**2-.5) &
-                               + btam(i)*clight/gmam(i)*mum(j)*dlnbdz 
-         if (oneD) Af(i,j,k) = Af(i,j,k) -S*btam(i)*(1-3*mum(j)**2) 
+
+    if (inc_synchro.and..not.oneD) then ! Include synchrotron terms?
+      do k = 1, nz
+        S = 2./3.*(e2*Zbeam**2/mbeam*Bfield(k))**2 / ergperev ! ev / cm
+        do j = 1, nmu; do i = 1, nE
+           tmp =  -S*btam(i)*gmam(i)**2*sintm(j)**2
+           Ap(i,j,k) = Ap(i,j,k) + tmp
+           Amu(i,j,k) = Amu(i,j,k) + S*clight/gmam(i)**2/mbeam*sintm(j)**2*mum(j)
+           Af(i,j,k) = Af(i,j,k) - 4*S*clight/gmam(i)/mbeam*(gmam(i)**2*sintm(j)+mum(j)**2-.5)
          !Do not add these forces to flxpC since they do not contribute to the local
          !heating rate. That is synchrotron radiation is thin and escapes so does
          !not heat the local plasma.
          !flxpC(0,i,j,k) = flxpC(0,i,j,k) + tmp
-      enddo; enddo
-    enddo
+        enddo; enddo
+      enddo
+    endif
+    if (inc_magmirror.and..not.oneD) then ! include magnetic mirroring?
+      do k = 1, nz
+        dlnBdz = sum(log(Bfield(k-1:k+1))*dzc(:,k))
+        do j = 1, nmu; do i = 1, nE
+          Amu(i,j,k) = Amu(i,j,k) -.5/gmam(i)*btam(i)*clight*dlnbdz*sintm(j)**2
+          Af(i,j,k) = Af(i,j,k) + btam(i)*clight/gmam(i)*mum(j)*dlnbdz
+        enddo; enddo
+      enddo
+    endif
     do j = 1, nmu; do i = 1, nE
       Az(i,j) = mum(j)*btam(i)*clight
     enddo; enddo
@@ -256,7 +213,7 @@ Module matrix
     use beam
     implicit none
     integer i,j,k
-    double precision rhsd(0:nE+1), diag(0:nE+1,-2:2), muterm(-2:2), zterm(-2:2), forcep, forcet
+    double precision rhsd(0:nE+1), diag(0:nE+1,-2:2), muterm(-2:2), zterm(-2:2), forcep, forcet, ddp(-2:2),ddm(-2:2),ddz(-2:2)
     double precision newf(0:nE+1,nmu,nz), tt
  
     tt =implicit_theta
@@ -266,45 +223,36 @@ Module matrix
     diag(0,1) = -1
 
     rhsd(nE+1) = 0
-    diag(nE+1,:) = 0d0
+    diag(nE+1,:) = 0d0 
     diag(nE+1,0) = 1d0
-    diag(nE+1,-1) = -1d0
+    !diag(nE+1,-1) = -1d0
 
     do k = 1, nz; do j = 1, nmu
       do i = 1,nE
-        forcep = (Ap(i,j,k)+Bp(i,j,k)*nflux(k))*dpm(0,i)! Current df/dp component of the force in the p-hat direction
+        !Choose upwind stencil derivative
         forcet = (Amu(i,j,k)+Bmu(i,j,k)*nflux(k))*dmum(0,j)! Current df/dmu component of the force in the theta-hat direction
+        if (forcet.gt.0) then; ddm = dmum(:,j); else; ddm = dmup(:,j); endif
+        forcep = (Ap(i,j,k)+Bp(i,j,k)*nflux(k))*dpm(0,i)! Current df/dp component of the force in the p-hat direction
+        if (forcep.gt.0) then; ddp = dpm(:,i); else; ddp = dpp(:,i); endif
+        if (mum(j).gt.0) then; ddz(-2:0) = dzm(:,k); ddz(1:2)=0; else; ddz(0:2) = dzp(:,k); ddz(-2:-1)=0; endif
 
-        if (forcep .gt.0) then ! acceleration so upwind derivative stencil is dpm
-          diag(i,:) = (Ap(i,j,k) + Bp(i,j,k)*nflux(k)) * dpm(:,i) + Ap2(i,k)*dp2(:,i) 
-          if (i.eq.1.and.par_leftedge(1)) diag(i,:) = 0
-        else ! deceleration so upwind derivative stencil is dpp
-          diag(i,:) = (Ap(i,j,k) + Bp(i,j,k)*nflux(k)) * dpp(:,i) + Ap2(i,k)*dp2(:,i) 
-          if (i.eq.nE.and.par_rightedge(1)) diag(i,:) = 0
-        endif
-        if (forcet .gt.0) then !force is increasing theta so upwind derivative stencil is dmum
-          muterm = (Amu(i,j,k) + Bmu(i,j,k)*nflux(k)) * dmum(:,j) + Amu2(i,j,k)*dmu2(:,j)
-        else ! force is decreasing theta so upwind derivative stencil is dmup
-          muterm = (Amu(i,j,k) + Bmu(i,j,k)*nflux(k)) * dmup(:,j) + Amu2(i,j,k)*dmu2(:,j)
-        endif
-        if (mum(j).gt.0) then ! traveling in the +z direction so upwind stencil is dzm
-          zterm(-2:0) = Az(i,j) * dzm(:,k)
-          rhsd(i) = - sum(f(i,j,k-2:k-1)*zterm(-2:-1))
-        else ! traveling in the -z direction so upwind stencil is dzp
-          zterm(0:2) = Az(i,j) * dzp(:,k)
-          rhsd(i) = - sum(f(i,j,k+1:k+2)*zterm(1:2))
-        endif
-        rhsd(i) = rhsd(i) -sum(f(i,j-2:j-1,k)*muterm(-2:-1)) - sum(f(i,j+1:j+2,k)*muterm(1:2))  
+        diag(i,:) = (Ap(i,j,k) + Bp(i,j,k)*nflux(k)) * ddp + Ap2(i,k)*dp2(:,i)
+        if (i.eq.1.and.par_leftedge(1).and.forcep.gt.0) diag(i,:) = 0
+        if (i.eq.nE.and.par_rightedge(1).and.forcep.le.0) diag(i,:) = 0
+        muterm = (Amu(i,j,k) + Bmu(i,j,k)*nflux(k)) * ddm + Amu2(i,j,k)*dmu2(:,j)
+        zterm = Az(i,j)*ddz
+        diag(i,0) = diag(i,0) + muterm(0) + zterm(0) + Af(i,j,k) + Bf(i,j,k)*nflux(k)
+        rhsd(i) = -sum(f(i,j-2:j-1,k)*muterm(-2:-1)) - sum(f(i,j+1:j+2,k)*muterm(1:2)) &
+                  -sum(f(i,j,k-2:k-1)*zterm(-2:-1)) - sum(f(i,j,k+1:k+2)*zterm(1:2))
 
-        diag(i,0) = diag(i,0) + muterm(0) + zterm(0) + Af(i,j,k) +Bf(i,j,k)*nflux(k)
       enddo
       call pentdiag(diag,rhsd, newf(0:nE+1,j,k),nE+2)
     enddo; enddo
     where(newf.lt.0) 
       newf = 0
     endwhere
-    f(0:nE+1,1:nmu,1:nz) = (1-tt)*f(0:nE+1,1:nmu,1:nz) + tt*newf
-    call updateBC()
+    f(1:nE,1:nmu,1:nz) = (1-tt)*f(1:nE,1:nmu,1:nz) + tt*newf(1:nE,1:nmu,1:nz)
+    call UpdateBC()
   ENDSUBROUTINE
 
   SUBROUTINE SweepMu()
@@ -314,7 +262,7 @@ Module matrix
     use beam
     implicit none
     integer i,j,k
-    double precision rhsd(0:nmu+1), diag(0:nmu+1,-2:2), pterm(-2:2), zterm(-2:2), forcep, forcet
+    double precision rhsd(0:nmu+1), diag(0:nmu+1,-2:2), pterm(-2:2), zterm(-2:2), forcep, forcet, ddp(-2:2),ddm(-2:2),ddz(-2:2)
     double precision tt, newf(nE, 0:nmu+1, nz)
 
     tt = implicit_theta
@@ -329,38 +277,28 @@ Module matrix
     diag(nmu+1,-1) = -1d0
     do k = 1, nz; do i = nE, 1,-1
       do j = 1, nmu
+        !Choose the upwind stencil derivative
         forcep = (Ap(i,j,k)+Bp(i,j,k)*nflux(k))*dpm(0,i) ! Current df/dp component to force in the p-hat direction
+        if (forcep.gt.0) then; ddp = dpm(:,i); else; ddp = dpp(:,i); endif
         forcet = (Amu(i,j,k)+Bmu(i,j,k)*nflux(k))*dmum(0,j) ! Current df/dmu component to force in the theta-hat direction
+        if (forcet.gt.0) then; ddm = dmum(:,j); else; ddm = dmup(:,j); endif
+        if (mum(j).gt.0) then; ddz(-2:0) = dzm(:,k); ddz(1:2)=0; else; ddz(0:2) = dzp(:,k); ddz(-2:-1)=0; endif
 
-        if (forcet .gt.0) then !force is increasing theta so upwind derivative stencil is dmum
-          diag(j,:) = (Amu(i,j,k) + Bmu(i,j,k)*nflux(k)) * dmum(:,j) + Amu2(i,j,k)*dmu2(:,j)
-        else !force is decreasing theta so upwind derivative stencil is dmup
-          diag(j,:) = (Amu(i,j,k) + Bmu(i,j,k)*nflux(k)) * dmup(:,j) + Amu2(i,j,k)*dmu2(:,j)
-        endif
-        if (forcep .gt.0) then ! acceleration so upwind derivative stencil is dpm
-          pterm = (Ap(i,j,k) + Bp(i,j,k)*nflux(k)) * dpm(:,i) + Ap2(i,k)*dp2(:,i)
-          if (i.eq.1.and.par_leftedge(1)) pterm = 0
-        else ! deceleration so upwind derivative stencil is dpp
-          pterm = (Ap(i,j,k) + Bp(i,j,k)*nflux(k)) * dpp(:,i) + Ap2(i,k)*dp2(:,i)
-          if (i.eq.nE.and.par_rightedge(1)) pterm =0
-        endif
-        if (mum(j).gt.0) then ! traveling in the +z direction so upwind stencil is dzm
-          zterm(-2:0) = Az(i,j)*dzm(:,k)
-          rhsd(j) = - sum(f(i,j,k-2:k-1)*zterm(-2:-1))
-        else ! traveling in the -z direction so upwind stencil is dzp
-          zterm(0:2) = Az(i,j)*dzp(:,k)
-          rhsd(j) = - sum(f(i,j,k+1:k+2)*zterm(1:2))
-        endif
-        diag(j,0) = diag(j,0) + Af(i,j,k) + pterm(0) + zterm(0) + Bf(i,j,k)*nflux(k)
-        rhsd(j) = rhsd(j) -sum(f(i-2:i-1,j,k)*pterm(-2:-1)) - sum(f(i+1:i+2,j,k)*pterm(1:2))
+        diag(j,:) = (Amu(i,j,k) + Bmu(i,j,k)*nflux(k)) * ddm + Amu2(i,j,k)*dmu2(:,j)
+        pterm = (Ap(i,j,k) + Bp(i,j,k)*nflux(k)) * ddp + Ap2(i,k)*dp2(:,i)
+        zterm = Az(i,j)*ddz
+        diag(j,0) = diag(j,0) + pterm(0) + zterm(0) + Af(i,j,k) + Bf(i,j,k)*nflux(k)
+        rhsd(j) = -sum(f(i-2:i-1,j,k)*pterm(-2:-1)) - sum(f(i+1:i+2,j,k)*pterm(1:2)) &
+                  -sum(f(i,j,k-2:k-1)*zterm(-2:-1)) - sum(f(i,j,k+1:k+2)*zterm(1:2))
+
       enddo
       call pentdiag(diag, rhsd, newf(i,0:nmu+1,k), nmu+2)
     enddo; enddo
     where(newf.lt.0)
       newf = 0
     endwhere
-    f(1:nE,0:nmu+1,1:nz) = tt*newf + (1-tt)*f(1:nE,0:nmu+1,1:nz)
-    call updateBC()
+    f(1:nE,1:nmu,1:nz) = tt*newf(1:nE,1:nmu,1:nz) + (1-tt)*f(1:nE,1:nmu,1:nz)
+    call UpdateBC()
   ENDSUBROUTINE
 
   SUBROUTINE SweepZ()
@@ -370,7 +308,8 @@ Module matrix
     use beam
     implicit none
     integer i,j,k
-    double precision rhsd(0:nz+1), diag(0:nz+1,-2:2), pterm(-2:2), muterm(-2:2), forcep, forcet, newf(nE,nmu, 0:nz+1), tt
+    double precision rhsd(0:nz+1), diag(0:nz+1,-2:2), pterm(-2:2), muterm(-2:2), forcep, forcet, newf(nE,nmu, 0:nz+1), tt, &
+      ddm(-2:2),ddp(-2:2),ddz(-2:2)
 
     diag(0,:) = 0
     diag(0,0) = 1
@@ -378,6 +317,7 @@ Module matrix
     rhsd(nz+1) = 0
     diag(nz+1,:) = 0d0
     diag(nz+1,0) = 1d0
+    diag(nz+1,-1) = -1d0
     tt = implicit_theta
     do j = 1, nmu; do i = nE, 1,-1
       rhsd(0) = injectedf(i,j)
@@ -385,36 +325,25 @@ Module matrix
         forcep = (Ap(i,j,k) + Bp(i,j,k)*nflux(k))*dpm(0,i) ! Current df/dp component of the force in the p-hat direction
         forcet = (Amu(i,j,k) + Bmu(i,j,k)*nflux(k))*dmum(0,j) ! Current df/dmu component of the force in the theta-hat direction
 
-        if (mum(j).gt.0) then ! traveling in the +z direction so upwind stencil is dzm
-          diag(k,-2:0) = Az(i,j)*dzm(:,k) ; diag(k,1:2) = 0
-        else ! traveling in the -z direction so upwind stencil is dzp
-          diag(k,0:2) = Az(i,j)*dzp(:,k); diag(k,-2:-1) = 0
-        endif          
-        if (forcet .gt.0) then !force is increasing theta so upwind derivative stencil is dmum
-          muterm = (Amu(i,j,k) + Bmu(i,j,k)*nflux(k)) * dmum(:,j) + Amu2(i,j,k)*dmu2(:,j)
-          rhsd(k) = -sum(f(i,j-2:j-1,k)*muterm(-2:-1)) - sum(f(i,j+1:j+2,k)*muterm(1:2))
-        else ! force is decreasing theta so upwind derivative stencil is dmup
-          muterm = (Amu(i,j,k) + Bmu(i,j,k)*nflux(k)) * dmup(:,j) + Amu2(i,j,k)*dmu2(:,j)
-          rhsd(k) = -sum(f(i,j+1:j+2,k)*muterm(1:2)) - sum(f(i,j-2:j-1,k)*muterm(-2:-1))
-        endif
-        if (forcep .gt.0) then ! acceleration so upwind derivative stencil is dpm
-          pterm = (Ap(i,j,k) + Bp(i,j,k)*nflux(k)) * dpm(:,i) + Ap2(i,k)*dp2(:,i)
-          if (i.eq.1.and.par_leftedge(1)) pterm = 0
-          rhsd(k) = rhsd(k) - sum(f(i-2:i-1,j,k)*pterm(-2:-1)) - sum(f(i+1:i+2,j,k)*pterm(1:2))
-        else ! deceleration so upwind derivative stencil is dpp
-          pterm = (Ap(i,j,k) + Bp(i,j,k)*nflux(k)) * dpp(:,i) + Ap2(i,k)*dp2(:,i)
-          if (i.eq.nE.and.par_rightedge(1)) pterm = 0
-          rhsd(k) = rhsd(k) - sum(f(i-2:i-1,j,k)*pterm(-2:-1)) - sum(f(i+1:i+2,j,k)*pterm(1:2))
-        endif
-        diag(k,0) = diag(k,0) + Af(i,j,k) +  muterm(0) + pterm(0) + Bf(i,j,k)*nflux(k)
+        !Choose the upwind stencil derivative
+        if (forcet.gt.0) then; ddm = dmum(:,j); else; ddm = dmup(:,j); endif
+        if (forcep.gt.0) then; ddp = dpm(:,i); else; ddp = dpp(:,i); endif
+        if (mum(j).gt.0) then; ddz(-2:0) = dzm(:,k); ddz(1:2)=0; else; ddz(0:2) = dzp(:,k); ddz(-2:-1)=0; endif
+
+        muterm = (Amu(i,j,k) + Bmu(i,j,k)*nflux(k)) * ddm + Amu2(i,j,k)*dmu2(:,j)
+        pterm = (Ap(i,j,k) + Bp(i,j,k)*nflux(k)) * ddp + Ap2(i,k)*dp2(:,i)
+        diag(k,:)= Az(i,j)*ddz
+        diag(k,0) = diag(k,0) + pterm(0) + muterm(0) + Af(i,j,k) + Bf(i,j,k)*nflux(k) 
+        rhsd(j) = -sum(f(i-2:i-1,j,k)*pterm(-2:-1)) - sum(f(i+1:i+2,j,k)*pterm(1:2)) &
+                  -sum(f(i,j-2:j-1,k)*muterm(-2:-1)) - sum(f(i,j+1:j+2,k)*muterm(1:2))
       enddo
       call pentdiag(diag,rhsd, newf(i,j,0:nz+1),nz+2)
     enddo; enddo
     where (newf.lt.0)
       newf = 0
     endwhere
-    f(1:nE,1:nmu,0:nz+1) = tt*newf + (1-tt)*f(1:nE,1:nmu,0:nz+1)
-    call updateBC()
+    f(1:nE,1:nmu,1:nz) = tt*newf(:,:,1:nz) + (1-tt)*f(1:nE,1:nmu,1:nz)
+    call UpdateBC()
   ENDSUBROUTINE
 
   SUBROUTINE analytic_soln()
@@ -453,16 +382,20 @@ Module matrix
     use parmpi
     implicit none
     integer i,j,k,ierr
-    double precision a0, ap, am, az, absres, d(2), r
+    double precision r0, rp, rm, rz, absres, d(2), r
 
     absres = 0d0
     do k = 1, nz; do j = 1, nmu; do i = 1, nE 
-      a0 = (A(0,i,j,k) + B(0,i,j,k)*nflux(k))*f(i,j,k)
-      ap = (A(1,i,j,k) + B(1,i,j,k)*nflux(k))*f(i-1,j,k) + (A(2,i,j,k) + B(2,i,j,k)*nflux(k))*f(i+1,j,k)
-      am = (A(3,i,j,k) + B(3,i,j,k)*nflux(k))*f(i,j-1,k) + (A(4,i,j,k) + B(4,i,j,k)*nflux(k))*f(i,j+1,k)
-      az = A(5,i,j,k)*f(i,j,k-1) + A(6,i,j,k)*f(i,j,k+1) 
-      res(i,j,k) = a0 + ap + am + az
-      absres = absres + ((abs(a0)+abs(ap)+abs(am)+abs(az)))**2
+      r0 = (  Ap2(i,k)*dp2(0,i) + (Ap(i,j,k)+Bp(i,j,k)*nflux(k))*dpc(0,i)  &
+            + Amu2(i,j,k)*dmu2(0,j) + (Amu(i,j,k)+Bmu(i,j,k)*nflux(k))*dmuc(0,j) & 
+            + Az(i,j)*dzc(0,k) + Af(i,j,k) + Bf(i,j,k)*nflux(k) )*f(i,j,k)
+      rp = ( Ap2(i,k)*dp2(-1,i) + (Ap(i,j,k)+Bp(i,j,k)*nflux(k))*dpc(-1,i))*f(i-1,j,k)&
+          +( Ap2(i,k)*dp2( 1,i) + (Ap(i,j,k)+Bp(i,j,k)*nflux(k))*dpc( 1,i))*f(i+1,j,k)
+      rm = ( Amu2(i,j,k)*dmu2(-1,j) + (Amu(i,j,k)+Bmu(i,j,k)*nflux(k))*dmuc(-1,j))*f(i,j-1,k) &
+          +( Amu2(i,j,k)*dmu2( 1,j) + (Amu(i,j,k)+Bmu(i,j,k)*nflux(k))*dmuc( 1,j))*f(i,j+1,k)
+      rz = Az(i,j)*dzc(-1,k)*f(i,j,k-1) + Az(i,j)*dzc(1,k)*f(i,j,k+1)
+      res(i,j,k) = r0 + rp + rm + rz
+      absres = absres + ((abs(r0)+abs(rp)+abs(rm)+abs(rz)))**2
     enddo; enddo; enddo
     d = (/sum(res**2),absres/)
     call MPI_Allreduce(MPI_IN_PLACE, d, 2, MPI_DOUBLE_PRECISION, MPI_SUM, cart_comm, ierr)

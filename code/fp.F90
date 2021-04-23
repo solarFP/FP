@@ -29,16 +29,20 @@ MODULE FP
     implicit none
     TYPE(fpinputtype) fpinput
 
+    if (fpinput%oneD) then ! Ensure parameters are consistent with oneD implementation
+      fpinput%nmu = 1
+      fpinput%patype = 0
+      fpinput%reflecttop = .false.
+      fpinput%reflectbottom = .false.
+      fpinput%inc_magmirror = .false.
+      fpinput%inc_synchro = .false.
+    endif
     Emin = fpinput%Emin; Emax = fpinput%Emax; inc_relativity = fpinput%inc_relativity; inc_CC= fpinput%inc_CC 
     inc_synchro = fpinput%inc_synchro; inc_magmirror = fpinput%inc_magmirror
     inc_RC = fpinput%inc_RC; reflecttop = fpinput%reflecttop; oneD = fpinput%oneD
     reflectbottom = fpinput%reflectbottom;  maxiter = fpinput%maxiter; tolres =  fpinput%tolres 
     toldiff =  fpinput%toldiff; implicit_theta =  fpinput%implicit_theta 
     resist_fact =  fpinput%resist_fact
-    if (oneD) then 
-      fpinput%nmu = 1
-      fpinput%patype = 0
-    endif
   ENDSUBROUTINE
  
   SUBROUTINE FP_set_beam_particle(fpinput)
@@ -79,7 +83,7 @@ MODULE FP
     call setup_par_grids()
     call getmyatm()
     ! convert Emax and Emin to eV
-    call init_grid(mbeam,Emax*1d3,Emin*1d3, fpinput%Ecut*1d3, inc_relativity, zin_all,fulloffset,oneD)
+    call init_grid(mbeam,Emax*1d3,Emin*1d3, fpinput%Ecut*1d3, inc_relativity, zin_all,fulloffset,oneD,par_leftedge)
   ENDSUBROUTINE
 
   SUBROUTINE FP_InjectPowerLaw(fpinput)
@@ -170,6 +174,7 @@ MODULE FP
 
     call CalcNflux()
     r= residual()
+    conv = .false.
     do ts = 1, maxiter
       if (.not.oneD) call SweepMu()
       call SweepP()

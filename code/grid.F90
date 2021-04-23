@@ -87,15 +87,15 @@ module grid
       deallocate(sint,sintm)
       deallocate(dmum,dmup,dmu2,dmuc, dtc)
 
-      deallocate(z, zm,dzm,dzp,dz2,dzc, msvol)
+      deallocate(z, zm,dzm,dzp,dz2,dzc, msvol,esvol)
     end subroutine
 
-    subroutine init_grid(mbeam, Emax, Emin, Epiv, rel, zin_all,fulloffset,oneD)
+    subroutine init_grid(mbeam, Emax, Emin, Epiv, rel, zin_all,fulloffset,oneD,leftedge)
       use derivs
       implicit none
       integer i,j,k,ib, jall, fulloffset(3), nEbp
       double precision Emax, Emx, mbeam, Emin, Emn, Epiv, Epv,z0, zma(-1:nz_all+2), za(-1:nz_all+3), zin_all(nz_all), zn,gs
-      logical rel, oneD
+      logical rel, oneD, leftedge(3)
 
       doRel = rel
       call allocate_grid(oneD)
@@ -104,22 +104,35 @@ module grid
       Emn = Emin / mbeam
       Epv = Epiv / mbeam
 
-      gs=.75d0
+      gs=.25d0
       ! E grid in units of /mc^2
-      nEbp = nE_all / 2 ! # of grid cells below Epiv
+      nEbp = nE_all / 3 ! # of grid cells below Epiv
       
       ib = -1
-      do i = ib, nE+3
-!        E(i) = (real(i-1 + fulloffset(1))/real(nE_all) * (Emx**gs - Emn**gs) + Emn**gs)**(1d0/gs)
-        E(i) = exp(real(i-1 + fulloffset(1))/real(nE_all) * (log(Emx) - log(Emn)) + log(Emn))
-!        if (i+fulloffset(1).lt.nEbp) then
-!          E(i) = (real(i-1 + fulloffset(1))/real(nEbp) * (Epv**gs - Emn**gs) + Emn**gs)**(1d0/gs) !power-law (gs) below Epiv
-!!          E(i) =  exp(real(i-1 + fulloffset(1))/real(nEbp) * (log(Epv) - log(Emn)) + log(Emn))
-!        else
-!          E(i) = exp(real(i-nEbp + fulloffset(1))/real(nE_all-nEbp+1) * (log(Emx) - log(Epv)) + log(Epv)) !log spaced above Epiv
-!!          E(i) = (real(i-nEbp + fulloffset(1))/real(nE_all-nEbp+1) * (Emx**gs - Epv**gs) + Epv**gs)**(1d0/gs)
-!        endif
-      enddo
+      if (Emn.lt.0) then
+        !if (myid.eq.0) 
+        write(*,*) 'Warning: Emin < 0. Setting Emin = 0'
+        Emn = 0d0
+      endif
+      if (Emn.eq.0.and.leftedge(1)) ib = 1
+      if (Emn.eq.0) then
+        do i = ib,nE+3
+          if (i+fulloffset(1).lt.NEbp) then
+            E(i) = (real(i-1 + fulloffset(1))/real(nEbp) * (Epv**gs - Emn**gs) + Emn**gs)**(1d0/gs) !power-law (gs) below Epiv
+          else
+            E(i) = exp(real(i-nEbp + fulloffset(1))/real(nE_all-nEbp) * (log(Emx) - log(Epv)) + log(Epv)) !log spaced above Epiv
+          endif
+        enddo
+        if (leftedge(1)) then
+          E(0) = E(2)
+          E(-1) = E(3)
+        endif
+      else 
+        do i = ib, nE+3
+!          E(i) = (real(i-1 + fulloffset(1))/real(nE_all) * (Emx**gs - Emn**gs) + Emn**gs)**(1d0/gs)
+          E(i) = exp(real(i-1 + fulloffset(1))/real(nE_all) * (log(Emx) - log(Emn)) + log(Emn))
+        enddo
+      endif
       Em = .5*(E(-1:nE+2) + E(0:nE+3))
       if (doRel) then
         gma = E + 1
@@ -140,6 +153,10 @@ module grid
       endif
       p = gma*bta
       pm = gmam*btam
+      if (Emn.eq.0.and.leftedge(1)) then
+        p(0) = -p(2); p(-1) = -p(3)
+        pm(0) = -pm(1); pm(-1) = -pm(2)
+      endif
       call deriv2_3coef(pm,dp2(-1:1,:),nE); dp2(-2,:) = 0; dp2(2,:) = 0
       call deriv_3coef(pm(0:nE+1), pm(1:nE), dpc, nE)
       call deriv_3coef(pm(-1:nE), pm(1:nE), dpm(-2:0,:), nE) ; dpm(1:2,:) = 0! 3pt deriv stencil evalautes at pm(i) using pm(i-2), pm(i-1), pm(i)
